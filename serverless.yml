@@ -4,7 +4,12 @@ service: udashopper
 frameworkVersion: '3'
 
 custom:
-  tableName: 'users-table-${sls:stage}'
+  listingsTableName: 'listings-table-${sls:stage}'
+  dynamodb:
+    start:
+      migrate: true
+    stages:
+      - dev
 
 provider:
   name: aws
@@ -21,9 +26,13 @@ provider:
             - dynamodb:UpdateItem
             - dynamodb:DeleteItem
           Resource:
-            - Fn::GetAtt: [ UsersTable, Arn ]
+            - Fn::GetAtt: [ ListingsTable, Arn ]
   environment:
-    USERS_TABLE: ${self:custom.tableName}
+    LISTINGS_TABLE: ${self:custom.listingsTableName}
+    ISSUER_BASE_URL: https://dev-wh685a43.us.auth0.com/
+    AUDIENCE: https://iw2q1o07x8.execute-api.us-east-1.amazonaws.com
+  httpApi:
+    cors: true
 
 functions:
   api:
@@ -33,14 +42,22 @@ functions:
 
 resources:
   Resources:
-    UsersTable:
+    ListingsTable:
       Type: AWS::DynamoDB::Table
       Properties:
         AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
           - AttributeName: userId
             AttributeType: S
         KeySchema:
-          - AttributeName: userId
+          - AttributeName: id
             KeyType: HASH
+          - AttributeName: userId
+            KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
-        TableName: ${self:custom.tableName}
+        TableName: ${self:custom.listingsTableName}
+
+plugins:
+  - serverless-dynamodb-local
+  - serverless-offline
