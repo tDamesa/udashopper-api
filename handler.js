@@ -4,6 +4,7 @@ var cors = require("cors");
 const serverless = require("serverless-http");
 const { expressjwt: jwt } = require("express-jwt");
 const jwks = require("jwks-rsa");
+const uuid = require("uuid");
 
 const checkJwt = jwt({
   secret: jwks.expressJwtSecret({
@@ -66,14 +67,21 @@ app.get("/api/my-listings", checkJwt, async function (req, res) {
 });
 
 app.post("/api/listings", checkJwt, async function (req, res) {
-  const { id, title, price, images, description } = req.body;
+  const { id, title, price, description } = req.body;
   if (typeof id !== "string") {
     return res.status(400).json({ error: '"id" must be a string' });
   } else if (typeof title !== "string") {
     return res.status(400).json({ error: '"title" must be a string' });
   }
+  
+  const item = { id, title, price, description, userId: req.auth.sub };
+  let uploadUrls = [];
+  if (!listingsExist(item.id)) { 
+    const imageIds = Array.from(Array(body.numberOfImages).keys()).forEach(i => uuid.v4());
+    uploadUrls = getUploadUrl(imageIds);
+    item.imageUrls = imageIds.map((imageId) =>`https://${process.env.IMAGES_S3_BUCKET}.s3.amazonaws.com/${imageId}`);
+  }
 
-  const item = { id, title, price, images, description, userId: req.auth.sub };
   const params = {
     TableName: LISTINGS_TABLE,
     Item: item,
@@ -81,7 +89,7 @@ app.post("/api/listings", checkJwt, async function (req, res) {
 
   try {
     await dynamoDbClient.put(params).promise();
-    return res.json(item);
+    return res.json({item, uploadUrls});
   } catch (error) {
     console.log(error);
     return res.status(500).json({ error: "Could not create listing" });
@@ -108,6 +116,28 @@ app.delete("/api/listings/:id", checkJwt, async function (req, res) {
     return res.status(500).json({ error: "Could not create listing" });
   }
 });
+
+async function listingsExist(id) {
+  const result = await dynamoDbClient
+    .get({
+      TableName: LISTINGS_TABLE,
+      Key: {
+        id: id,
+      },
+    })
+    .promise();
+  return !!result.Item;
+}
+
+function getUploadUrl(imageIds) {
+  return imageIds.map((imageId, i) =>
+    s3.getSignedUrl("putObject", {
+      Bucket: process.env.IMAGES_S3_BUCKET,
+      Key: `${i}_${imageId}`,
+      Expires: 300,
+    })
+  );
+}
 
 app.use((req, res, next) => {
   return res.status(404).json({

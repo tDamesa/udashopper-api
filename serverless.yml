@@ -10,7 +10,7 @@ custom:
       migrate: true
     stages:
       - dev
-
+  listingsImagesBucket: 'listings-images-bucket-${sls:stage}'
 provider:
   name: aws
   runtime: nodejs14.x
@@ -26,11 +26,20 @@ provider:
             - dynamodb:UpdateItem
             - dynamodb:DeleteItem
           Resource:
-            - Fn::GetAtt: [ ListingsTable, Arn ]
+        - Effect: Allow
+          Action: 's3:ListBucket'
+          Resource: '*'
+        - Effect: Allow
+          Action:
+            - 's3:GetObject'
+            - 's3:PutObject'
+          Resource:
+            - 'arn:aws:s3:::${self:custom.listingsImagesBucket}'
   environment:
     LISTINGS_TABLE: ${self:custom.listingsTableName}
     ISSUER_BASE_URL: https://dev-wh685a43.us.auth0.com/
     AUDIENCE: https://iw2q1o07x8.execute-api.us-east-1.amazonaws.com
+    IMAGES_S3_BUCKET: ${self:custom.listingsImagesBucket}
   httpApi:
     cors: true
 
@@ -57,6 +66,38 @@ resources:
             KeyType: RANGE
         BillingMode: PAY_PER_REQUEST
         TableName: ${self:custom.listingsTableName}
+
+    AttachmentsBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:custom.listingsImagesBucket}
+        CorsConfiguration:
+          CorsRules:
+            -
+              AllowedOrigins:
+                - '*'
+              AllowedHeaders:
+                - '*'
+              AllowedMethods:
+                - GET
+                - PUT
+                - POST
+                - DELETE
+                - HEAD
+              MaxAge: 3000
+    BucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      Properties:
+        PolicyDocument:
+          Id: MyPolicy
+          Version: "2012-10-17"
+          Statement:
+            - Sid: PublicReadForGetBucketObjects
+              Effect: Allow
+              Principal: '*'
+              Action: 's3:GetObject'
+              Resource: 'arn:aws:s3:::${self:custom.listingsImagesBucket}/*'
+        Bucket: !Ref AttachmentsBucket
 
 plugins:
   - serverless-dynamodb-local
