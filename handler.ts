@@ -1,12 +1,12 @@
-const AWS = require("aws-sdk");
-const express = require("express");
-var cors = require("cors");
-const serverless = require("serverless-http");
-const { expressjwt: jwt } = require("express-jwt");
-const jwks = require("jwks-rsa");
-const uuid = require("uuid");
+import {DynamoDB, S3} from "aws-sdk";
+import * as express from "express";
+import * as cors from "cors";
+import * as serverless from "serverless-http";
+import { expressjwt } from "express-jwt";
+import * as jwks  from "jwks-rsa";
+import * as uuid  from "uuid";
 
-const checkJwt = jwt({
+const checkJwt = expressjwt({
   secret: jwks.expressJwtSecret({
     cache: true,
     rateLimit: true,
@@ -23,13 +23,16 @@ app.use(express.json());
 app.use(cors());
 app.options("*", cors());
 
-const LISTINGS_TABLE = process.env.LISTINGS_TABLE;
-const dynamoDbClientParams = {};
+const LISTINGS_TABLE = process.env.LISTINGS_TABLE!;
+const dynamoDbClientParams = {} as any;
 if (process.env.IS_OFFLINE) {
   dynamoDbClientParams.region = "localhost";
   dynamoDbClientParams.endpoint = "http://localhost:8000";
 }
-const dynamoDbClient = new AWS.DynamoDB.DocumentClient(dynamoDbClientParams);
+const dynamoDbClient = new DynamoDB.DocumentClient(dynamoDbClientParams);
+const s3 = new S3({
+  signatureVersion: "v4",
+});
 
 app.get("/api/listings", async function (_req, res) {
   const params = {
@@ -44,7 +47,7 @@ app.get("/api/listings", async function (_req, res) {
   }
 });
 
-app.get("/api/my-listings", checkJwt, async function (req, res) {
+app.get("/api/my-listings", checkJwt, async function (req: any, res) {
   const params = {
     TableName: LISTINGS_TABLE,
     FilterExpression: "userId = :userId",
@@ -66,20 +69,20 @@ app.get("/api/my-listings", checkJwt, async function (req, res) {
   }
 });
 
-app.post("/api/listings", checkJwt, async function (req, res) {
-  const { id, title, price, description } = req.body;
-  if (typeof id !== "string") {
-    return res.status(400).json({ error: '"id" must be a string' });
-  } else if (typeof title !== "string") {
+app.post("/api/listings", checkJwt, async function (req: any, res) {
+  const { id, title, price, description, imageUrls, numberOfImages } = req.body;
+  const userId = req.auth.sub
+  if (typeof title !== "string") {
     return res.status(400).json({ error: '"title" must be a string' });
   }
   
-  const item = { id, title, price, description, userId: req.auth.sub };
+  const item = { id: id || uuid.v4(), userId, title, price, description, imageUrls };
   let uploadUrls = [];
-  if (!listingsExist(item.id)) { 
-    const imageIds = Array.from(Array(body.numberOfImages).keys()).forEach(i => uuid.v4());
+  if (numberOfImages) { 
+    const imageIds = [...Array(numberOfImages)].map(_ => uuid.v4());
     uploadUrls = getUploadUrl(imageIds);
     item.imageUrls = imageIds.map((imageId) =>`https://${process.env.IMAGES_S3_BUCKET}.s3.amazonaws.com/${imageId}`);
+    console.log(item.imageUrls);
   }
 
   const params = {
@@ -96,9 +99,8 @@ app.post("/api/listings", checkJwt, async function (req, res) {
   }
 });
 
-app.delete("/api/listings/:id", checkJwt, async function (req, res) {
+app.delete("/api/listings/:id", checkJwt, async function (req: any, res) {
   const { id } = req.params;
-  console.log({ id, userId: req.auth.sub });
   const params = {
     TableName: LISTINGS_TABLE,
     Key: { id, userId: req.auth.sub },
@@ -117,12 +119,13 @@ app.delete("/api/listings/:id", checkJwt, async function (req, res) {
   }
 });
 
-async function listingsExist(id) {
+async function listingsExist(id, userId) {
   const result = await dynamoDbClient
     .get({
       TableName: LISTINGS_TABLE,
       Key: {
-        id: id,
+        id,
+        userId,
       },
     })
     .promise();
@@ -133,7 +136,7 @@ function getUploadUrl(imageIds) {
   return imageIds.map((imageId, i) =>
     s3.getSignedUrl("putObject", {
       Bucket: process.env.IMAGES_S3_BUCKET,
-      Key: `${i}_${imageId}`,
+      Key: imageId,
       Expires: 300,
     })
   );

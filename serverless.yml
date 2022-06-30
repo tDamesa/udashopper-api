@@ -10,6 +10,8 @@ custom:
       migrate: true
     stages:
       - dev
+    region:
+      - us-east-1
   listingsImagesBucket: 'listings-images-bucket-${sls:stage}'
 provider:
   name: aws
@@ -25,7 +27,7 @@ provider:
             - dynamodb:PutItem
             - dynamodb:UpdateItem
             - dynamodb:DeleteItem
-          Resource:
+          Resource: arn:aws:dynamodb:${self:custom.dynamodb.region}:*:table/${self:custom.listingsTableName}  
         - Effect: Allow
           Action: 's3:ListBucket'
           Resource: '*'
@@ -34,7 +36,7 @@ provider:
             - 's3:GetObject'
             - 's3:PutObject'
           Resource:
-            - 'arn:aws:s3:::${self:custom.listingsImagesBucket}'
+            - 'arn:aws:s3:::${self:custom.listingsImagesBucket}/*'
   environment:
     LISTINGS_TABLE: ${self:custom.listingsTableName}
     ISSUER_BASE_URL: https://dev-wh685a43.us.auth0.com/
@@ -102,3 +104,4 @@ resources:
 plugins:
   - serverless-dynamodb-local
   - serverless-offline
+  - serverless-plugin-typescript
