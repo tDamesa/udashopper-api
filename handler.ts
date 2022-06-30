@@ -1,10 +1,13 @@
-import {DynamoDB, S3} from "aws-sdk";
+import * as AWS  from 'aws-sdk'
 import * as express from "express";
 import * as cors from "cors";
 import * as serverless from "serverless-http";
-import { expressjwt } from "express-jwt";
+import { expressjwt, GetVerificationKey } from "express-jwt";
 import * as jwks  from "jwks-rsa";
 import * as uuid  from "uuid";
+import {captureAWS} from 'aws-xray-sdk';
+
+const XAWS = captureAWS(AWS);
 
 const checkJwt = expressjwt({
   secret: jwks.expressJwtSecret({
@@ -12,7 +15,7 @@ const checkJwt = expressjwt({
     rateLimit: true,
     jwksRequestsPerMinute: 5,
     jwksUri: "https://dev-wh685a43.us.auth0.com/.well-known/jwks.json",
-  }),
+  }) as GetVerificationKey,
   audience: "https://iw2q1o07x8.execute-api.us-east-1.amazonaws.com",
   issuer: "https://dev-wh685a43.us.auth0.com/",
   algorithms: ["RS256"],
@@ -29,8 +32,8 @@ if (process.env.IS_OFFLINE) {
   dynamoDbClientParams.region = "localhost";
   dynamoDbClientParams.endpoint = "http://localhost:8000";
 }
-const dynamoDbClient = new DynamoDB.DocumentClient(dynamoDbClientParams);
-const s3 = new S3({
+const dynamoDbClient = new XAWS.DynamoDB.DocumentClient(dynamoDbClientParams);
+const s3 = new XAWS.S3({
   signatureVersion: "v4",
 });
 
