@@ -39,15 +39,15 @@ provider:
             - 'arn:aws:s3:::${self:custom.listingsImagesBucket}/*'
   environment:
     LISTINGS_TABLE: ${self:custom.listingsTableName}
-    ISSUER_BASE_URL: https://dev-wh685a43.us.auth0.com/
-    AUDIENCE: https://iw2q1o07x8.execute-api.us-east-1.amazonaws.com
+    AUTH_ISSUER_BASE_URL: https://dev-wh685a43.us.auth0.com/
+    AUTH_AUDIENCE: https://df3eg6j3a6.execute-api.us-east-1.amazonaws.com
     IMAGES_S3_BUCKET: ${self:custom.listingsImagesBucket}
   httpApi:
     cors: true
 
 functions:
   api:
-    handler: handler.handler
+    handler: src/handler.handler
     events:
       - httpApi: '*'
 
